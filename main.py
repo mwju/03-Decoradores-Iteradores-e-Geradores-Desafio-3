@@ -1,10 +1,19 @@
 import datetime
 
+# Constantes
 AGENCIA = "0001"
-LIMITE_DIARIO = 500
 LIMITE_SAQUES = 3
 LIMITE_TRANSACOES_DIARIAS = 10
 clientes = []
+
+# Decorador para imprimir mensagens antes e depois de chamar uma função
+def imprimir_mensagem(func):
+    def wrapper(*args, **kwargs):
+        print(f"Chamando {func.__name__}")
+        resultado = func(*args, **kwargs)
+        print(f"Concluído {func.__name__}")
+        return resultado
+    return wrapper
 
 class Endereco:
     def __init__(self, rua, numero, complemento, bairro, cidade, uf):
@@ -23,21 +32,13 @@ class Cliente:
         self.endereco = endereco
         self.contas = []
         self.qtd_saques = qtd_saques
-        self.index = 0
 
     def adicionar_conta(self, conta):
         self.contas.append(conta)
 
+    # Implementação do iterador de classe
     def __iter__(self):
-        return self
-
-    def __next__(self):
-        if self.index < len(self.contas):
-            result = self.contas[self.index]
-            self.index += 1
-            return result
-        else:
-            raise StopIteration
+        return iter(self.contas)
 
 class Transacao:
     def __init__(self, tipo, valor):
@@ -49,15 +50,22 @@ class Transacao:
         conta.extrato.append((self.horario, self.valor))
 
 class Conta:
-    def __init__(self, cliente, numero_conta, agencia, extrato=None):
+    _numero_conta = 0  # Atributo de classe para controlar o número da próxima conta
+
+    def __init__(self, cliente, agencia, extrato=None):
         self.cliente = cliente
-        self.numero_conta = numero_conta
+        self.numero_conta = self.gerar_numero_conta()  # Usando o gerador de número de conta
         self.agencia = agencia
         if extrato is None:
             self.extrato = []
         else:
             self.extrato = extrato
         self.historico = Historico()  # Cria uma instância de Historico para a conta
+
+    @classmethod
+    def gerar_numero_conta(cls):
+        cls._numero_conta += 1
+        return cls._numero_conta
 
     def realizar_transacao(self, transacao):
         transacao.registrar(self)
@@ -117,7 +125,10 @@ class Historico:
         self.transacoes = []
 
     def registrar_transacao(self, tipo, valor, horario):
-        self.transacoes.append((tipo, valor, horario))
+        if len(self.transacoes) >= LIMITE_TRANSACOES_DIARIAS:
+            print(f'Número máximo de transações atingido (Máximo {LIMITE_TRANSACOES_DIARIAS})')
+        else:
+            self.transacoes.append((tipo, valor, horario))
 
     def mostrar_transacoes(self):
         print("Histórico de Transações:")
@@ -193,8 +204,7 @@ def listar_contas():
 
 def criar_conta(cliente):
     if cliente:
-        numero_conta = len(cliente.contas) + 1
-        conta = Conta(cliente, numero_conta, AGENCIA)
+        conta = Conta(cliente, AGENCIA)
         cliente.adicionar_conta(conta)
         return conta
     else:
@@ -208,6 +218,7 @@ def solicitar_numero_conta():
         else:
             print("Por favor, insira apenas números inteiros para o número da conta.")
 
+@imprimir_mensagem  # Aplicando o decorador
 def depositar(conta):
     valor = float(input("Entre com o valor do depósito: "))
     if valor > 0:
@@ -215,17 +226,15 @@ def depositar(conta):
     else:
         print('Valor não pode ser negativo')
 
-def retirar(numero_saques, conta):
-    if numero_saques >= LIMITE_SAQUES:
-        print(f'Limite de saques diários atingido (Máximo {LIMITE_SAQUES})')
+@imprimir_mensagem  # Aplicando o decorador
+def retirar(conta):
+    valor = float(input("Entre com o valor de saque: "))
+    if valor < 0:
+        print('Valor não pode ser negativo')
     else:
-        valor = float(input("Entre com o valor de saque: "))
-        if valor < 0:
-            print('Valor não pode ser negativo')
-        else:
-            if conta.efetiva_retirada(valor):
-                numero_saques += 1
+        conta.efetiva_retirada(valor)
 
+@imprimir_mensagem  # Aplicando o decorador
 def listar_transacoes(conta):
     conta.historico.mostrar_transacoes()
 
@@ -249,9 +258,10 @@ while True:
     elif opcao == 'I':
         cpf = input("CPF do cliente: ")
         cliente = selecionar_cliente(cpf)
-        conta = criar_conta(cliente)
-        if conta:
-            print("Conta cadastrada com sucesso!")
+        if cliente:
+            conta = criar_conta(cliente)
+            if conta:
+                print("Conta cadastrada com sucesso!")
 
     elif opcao == 'L':
         listar_contas()
@@ -262,14 +272,12 @@ while True:
         conta = selecionar_conta(cpf, numero_conta)
         
         opcao_conta = ''
-        numero_transacoes = 0
-        numero_saques = 0
         while opcao_conta != 'V':
             opcao_conta = menu_opcoes().upper()
             if opcao_conta == 'D':
                 depositar(conta)
             elif opcao_conta == 'R':
-                retirar(numero_saques, conta)
+                retirar(conta)
             elif opcao_conta == 'E':                
                 conta.listar_extrato()
             elif opcao_conta == 'T':
